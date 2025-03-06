@@ -10,6 +10,8 @@ import '../models/cropped_image.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter_spinkit/flutter_spinkit.dart';
 
 class DetectionScreen extends StatefulWidget {
   const DetectionScreen({Key? key}) : super(key: key);
@@ -31,7 +33,11 @@ class _DetectionScreenState extends State<DetectionScreen> {
   bool _isProcessing = false;
   int _imageHeight = 1;
   int _imageWidth = 1;
+
+  // Stores filenames that should have red borders.
   List<String> _redImageNames = [];
+  // Stores complete API response for each image (keyed by filename).
+  Map<String, dynamic> _uploadResults = {};
 
   @override
   void initState() {
@@ -55,12 +61,14 @@ class _DetectionScreenState extends State<DetectionScreen> {
   }
 
   Future<void> _captureImage() async {
+    // If an image is already shown, clear previous state.
     if (_imageFile != null) {
       setState(() {
         _imageFile = null;
         _croppedImages = [];
         _yoloResults = [];
         _redImageNames = [];
+        _uploadResults = {};
       });
       await Future.delayed(const Duration(milliseconds: 100));
       return;
@@ -103,6 +111,7 @@ class _DetectionScreenState extends State<DetectionScreen> {
       _yoloResults = [];
       _croppedImages = [];
       _redImageNames = [];
+      _uploadResults = {};
       _isProcessing = true;
     });
 
@@ -159,6 +168,8 @@ class _DetectionScreenState extends State<DetectionScreen> {
     }).toList();
   }
 
+  /// Uploads the cropped images to the API.
+  /// It stores the complete API response for each file in _uploadResults.
   Future<void> _uploadImages() async {
     if (_croppedImages.isEmpty) return;
 
@@ -182,7 +193,9 @@ class _DetectionScreenState extends State<DetectionScreen> {
       final responseData = json.decode(responseString);
 
       List<String> redImages = [];
+      // Populate _uploadResults mapping.
       for (var result in responseData["results"]) {
+        _uploadResults[result["filename"]] = result;
         if (result["product"] == false) {
           redImages.add(result["filename"]);
         }
@@ -190,17 +203,165 @@ class _DetectionScreenState extends State<DetectionScreen> {
       setState(() {
         _redImageNames = redImages;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content:
-                Text("Upload successful. Red images: ${redImages.join(', ')}")),
-      );
     } catch (e) {
       debugPrint("Error during upload: $e");
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Error during upload. Please try again.")),
       );
     }
+  }
+
+  // Shows a cool popup with SKU codes for a success image.
+  void _showSkuDialog(String filename) {
+    final result = _uploadResults[filename];
+    if (result == null || result["product"] != true) return;
+
+    List<dynamic> matchedSku = result["matched_sku"] ?? [];
+    List<String> skuCodes = [];
+    for (var sku in matchedSku) {
+      skuCodes.add(sku["sku_code"].toString());
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.0)),
+          child: Container(
+            padding: const EdgeInsets.all(16.0),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Colors.blueAccent, Colors.lightBlueAccent],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(16.0),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  "Matched SKU Codes",
+                  style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white),
+                ),
+                const SizedBox(height: 16),
+                skuCodes.isNotEmpty
+                    ? Column(
+                        children: skuCodes
+                            .map((code) => Padding(
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 4.0),
+                                  child: Chip(
+                                    label: Text(
+                                      code,
+                                      style:
+                                          const TextStyle(color: Colors.white),
+                                    ),
+                                    backgroundColor: Colors.deepPurple,
+                                  ),
+                                ))
+                            .toList(),
+                      )
+                    : const Text("No SKU codes available.",
+                        style: TextStyle(color: Colors.white)),
+                const SizedBox(height: 16),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("Close",
+                      style: TextStyle(color: Colors.white)),
+                )
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // Shows analysis of the images in a pie chart.
+  void _showAnalysisDialog() {
+    int total = _uploadResults.length;
+    int success = _uploadResults.values
+        .where((result) => result["product"] == true)
+        .length;
+    int failure = _uploadResults.values
+        .where((result) => result["product"] == false)
+        .length;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.0)),
+          child: Container(
+            height: 320,
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              children: [
+                const Text("Analysis",
+                    style:
+                        TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: PieChart(
+                    PieChartData(
+                      sections: [
+                        PieChartSectionData(
+                          color: Colors.green,
+                          value: success.toDouble(),
+                          title: "Success\n$success",
+                          radius: 60,
+                          titleStyle: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white),
+                        ),
+                        PieChartSectionData(
+                          color: Colors.red,
+                          value: failure.toDouble(),
+                          title: "Failure\n$failure",
+                          radius: 60,
+                          titleStyle: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white),
+                        ),
+                      ],
+                      sectionsSpace: 2,
+                      centerSpaceRadius: 40,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text("Total Images: $total",
+                    style: const TextStyle(fontSize: 16)),
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("Close",
+                      style: TextStyle(fontSize: 16, color: Colors.blue)),
+                )
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // Custom cool loading widget using SpinKit.
+  Widget _buildCoolLoader() {
+    return Center(
+      child: SpinKitFadingCircle(
+        color: Colors.white,
+        size: 50.0,
+      ),
+    );
   }
 
   @override
@@ -220,7 +381,9 @@ class _DetectionScreenState extends State<DetectionScreen> {
     final Size previewSize = Size(previewWidth, previewHeight);
 
     return Scaffold(
-      appBar: AppBar(title: const Text("YOLO Detection")),
+      appBar: AppBar(
+        title: const Text("SKU Detection"),
+      ),
       body: SingleChildScrollView(
         child: Column(
           children: [
@@ -237,7 +400,7 @@ class _DetectionScreenState extends State<DetectionScreen> {
                   if (_isProcessing)
                     Container(
                       color: Colors.black.withOpacity(0.3),
-                      child: const Center(child: CircularProgressIndicator()),
+                      child: _buildCoolLoader(),
                     ),
                 ],
               ),
@@ -263,11 +426,12 @@ class _DetectionScreenState extends State<DetectionScreen> {
                       itemCount: _croppedImages.length,
                       itemBuilder: (context, index) {
                         final croppedImage = _croppedImages[index];
+                        final bool isFailure =
+                            _redImageNames.contains(croppedImage.filename);
                         final Color borderColor =
-                            _redImageNames.contains(croppedImage.filename)
-                                ? Colors.red
-                                : Colors.green;
-                        return Container(
+                            isFailure ? Colors.red : Colors.green;
+                        // Wrap the image in a GestureDetector if it is successful.
+                        Widget imageWidget = Container(
                           margin: const EdgeInsets.symmetric(horizontal: 8.0),
                           decoration: BoxDecoration(
                             border: Border.all(color: borderColor, width: 3),
@@ -279,6 +443,14 @@ class _DetectionScreenState extends State<DetectionScreen> {
                                 fit: BoxFit.cover),
                           ),
                         );
+                        if (_uploadResults[croppedImage.filename]?["product"] ==
+                            true) {
+                          return GestureDetector(
+                            onTap: () => _showSkuDialog(croppedImage.filename),
+                            child: imageWidget,
+                          );
+                        }
+                        return imageWidget;
                       },
                     ),
                   ),
@@ -299,6 +471,13 @@ class _DetectionScreenState extends State<DetectionScreen> {
                   label: const Text("Pick Image"),
                 ),
               ],
+            ),
+            const SizedBox(height: 20),
+            // Analysis button at bottom center.
+            ElevatedButton.icon(
+              onPressed: _uploadResults.isEmpty ? null : _showAnalysisDialog,
+              icon: const Icon(Icons.analytics),
+              label: const Text("Analysis"),
             ),
             const SizedBox(height: 20),
           ],
