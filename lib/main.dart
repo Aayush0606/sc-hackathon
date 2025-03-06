@@ -11,6 +11,13 @@ import 'package:image/image.dart' as img; // For image processing (cropping)
 
 late List<CameraDescription> cameras;
 
+/// A model class to store cropped image data along with a filename.
+class CroppedImage {
+  final String filename;
+  final Uint8List data;
+  CroppedImage({required this.filename, required this.data});
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   DartPluginRegistrant.ensureInitialized();
@@ -18,7 +25,7 @@ void main() async {
   runApp(const MyApp());
 }
 
-/// Main Application Widget
+/// Main Application Widget.
 class MyApp extends StatelessWidget {
   const MyApp({Key? key}) : super(key: key);
 
@@ -32,8 +39,9 @@ class MyApp extends StatelessWidget {
   }
 }
 
-/// HomeScreen: Captures an image, runs object detection, crops out each detected object,
-/// and displays both the processed image with bounding boxes and the cropped detections.
+/// HomeScreen: Captures an image, runs object detection, crops the detected objects,
+/// displays the processed image with bounding boxes, and simulates an upload that marks
+/// some images with a red border and others with a green border.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
 
@@ -46,11 +54,13 @@ class _HomeScreenState extends State<HomeScreen> {
   CameraController? _cameraController;
   File? _imageFile;
   List<Map<String, dynamic>> _yoloResults = [];
-  List<Uint8List> _croppedImages = [];
+  List<CroppedImage> _croppedImages = [];
   bool _isLoaded = false;
   bool _isProcessing = false;
   int _imageHeight = 1;
   int _imageWidth = 1;
+  // List of image filenames that should be marked with a red border.
+  List<String> _redImageNames = [];
 
   @override
   void initState() {
@@ -68,10 +78,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _initializeCamera() async {
-    _cameraController = CameraController(
-      cameras[0],
-      ResolutionPreset.medium,
-    );
+    _cameraController = CameraController(cameras[0], ResolutionPreset.medium);
     await _cameraController!.initialize();
     if (!mounted) return;
     setState(() {});
@@ -82,8 +89,8 @@ class _HomeScreenState extends State<HomeScreen> {
       await _vision.loadYoloModel(
         labels: 'assets/labels/labels.txt',
         modelPath:
-            'assets/models/bestv8.tflite', // Use your preferred model here
-        modelVersion: "yolov8", // Change to "yolov5" if using YOLOv5 model
+            'assets/models/bestv8.tflite', // Use your preferred model here.
+        modelVersion: "yolov8", // Change to "yolov5" if using a YOLOv5 model.
         numThreads: 2,
         useGpu: false,
       );
@@ -95,7 +102,21 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  /// Capture an image. If an image is already displayed, clear it to show the live camera preview.
   Future<void> _captureImage() async {
+    if (_imageFile != null) {
+      // Clear the current image and related state.
+      setState(() {
+        _imageFile = null;
+        _croppedImages = [];
+        _yoloResults = [];
+        _redImageNames = [];
+      });
+      // Allow time for the UI to update.
+      await Future.delayed(const Duration(milliseconds: 100));
+      return;
+    }
+
     if (_cameraController == null || !_cameraController!.value.isInitialized) {
       return;
     }
@@ -138,20 +159,21 @@ class _HomeScreenState extends State<HomeScreen> {
       _imageFile = imageFile;
       _yoloResults = [];
       _croppedImages = [];
+      _redImageNames = [];
     });
 
-    // Run YOLO detection on the image
+    // Run YOLO detection on the image.
     await _runDetection(imageFile);
 
-    // Crop the detected objects
+    // Crop the detected objects.
     if (_yoloResults.isNotEmpty) {
       await _cropDetectedObjects(imageFile);
     }
   }
 
   Future<void> _runDetection(File imageFile) async {
-    Uint8List byte = await imageFile.readAsBytes();
-    final image = await decodeImageFromList(byte);
+    Uint8List bytes = await imageFile.readAsBytes();
+    final image = await decodeImageFromList(bytes);
 
     setState(() {
       _imageHeight = image.height;
@@ -159,7 +181,7 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     final result = await _vision.yoloOnImage(
-      bytesList: byte,
+      bytesList: bytes,
       imageHeight: image.height,
       imageWidth: image.width,
       iouThreshold: 0.4,
@@ -174,21 +196,24 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  /// Crop the detected objects and return a list of CroppedImage objects.
   Future<void> _cropDetectedObjects(File imageFile) async {
     final bytes = await imageFile.readAsBytes();
     final decodedImage = img.decodeImage(bytes);
     if (decodedImage == null) return;
 
-    List<Uint8List> croppedImages = [];
+    List<CroppedImage> croppedImages = [];
 
-    for (final detection in _yoloResults) {
+    // Use index so each image gets a filename like "image0.png", "image1.png", etc.
+    for (int i = 0; i < _yoloResults.length; i++) {
+      final detection = _yoloResults[i];
       List<dynamic> box = detection["box"];
       int x = box[0].toInt();
       int y = box[1].toInt();
       int width = (box[2] - box[0]).toInt();
       int height = (box[3] - box[1]).toInt();
 
-      // Ensure crop stays within image boundaries
+      // Ensure the crop region stays within image boundaries.
       if (x < 0) x = 0;
       if (y < 0) y = 0;
       if (x + width > decodedImage.width) width = decodedImage.width - x;
@@ -196,7 +221,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
       final cropped = img.copyCrop(decodedImage, x, y, width, height);
       final croppedBytes = Uint8List.fromList(img.encodePng(cropped));
-      croppedImages.add(croppedBytes);
+      croppedImages
+          .add(CroppedImage(filename: "image$i.png", data: croppedBytes));
     }
 
     setState(() {
@@ -204,7 +230,7 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  /// Calculate and return positioned bounding boxes relative to the preview container
+  /// Calculate and return positioned bounding boxes relative to the preview container.
   List<Widget> _displayBoxesAroundRecognizedObjects(Size previewSize) {
     if (_yoloResults.isEmpty) return [];
 
@@ -233,6 +259,35 @@ class _HomeScreenState extends State<HomeScreen> {
     }).toList();
   }
 
+  /// Simulate an API call to upload images.
+  /// In this fake response, images at odd indices are marked for a red border.
+  Future<void> _uploadImages() async {
+    if (_croppedImages.isEmpty) return;
+
+    setState(() {
+      _isProcessing = true;
+    });
+
+    // Simulate a network delay.
+    await Future.delayed(const Duration(seconds: 2));
+
+    List<String> fakeRedImages = [];
+    for (int i = 0; i < _croppedImages.length; i++) {
+      if (i % 2 == 1) {
+        fakeRedImages.add("image$i.png");
+      }
+    }
+
+    setState(() {
+      _redImageNames = fakeRedImages;
+      _isProcessing = false;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content:
+            Text("Upload simulated. Red images: ${fakeRedImages.join(', ')}")));
+  }
+
   @override
   Widget build(BuildContext context) {
     final Size size = MediaQuery.of(context).size;
@@ -241,51 +296,42 @@ class _HomeScreenState extends State<HomeScreen> {
         _cameraController == null ||
         !_cameraController!.value.isInitialized) {
       return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(),
-        ),
+        body: Center(child: CircularProgressIndicator()),
       );
     }
 
-    // Define the preview container dimensions based on the screen width and camera aspect ratio
+    // Define the preview container dimensions based on screen width and camera aspect ratio.
     final double previewWidth = size.width;
     final double previewHeight =
         size.width * _cameraController!.value.aspectRatio;
     final Size previewSize = Size(previewWidth, previewHeight);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("YOLO Detection"),
-      ),
       body: SingleChildScrollView(
         child: Column(
           children: [
+            // Preview area: shows the captured image with bounding boxes or live camera feed.
             Container(
               width: previewWidth,
               height: previewHeight,
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  // Display either the captured image or the live camera preview
                   _imageFile != null
                       ? Image.file(_imageFile!, fit: BoxFit.fill)
                       : CameraPreview(_cameraController!),
-                  // Display bounding boxes when an image is loaded
                   if (_imageFile != null)
                     ..._displayBoxesAroundRecognizedObjects(previewSize),
-                  // Processing overlay
                   if (_isProcessing)
                     Container(
                       color: Colors.black.withOpacity(0.3),
-                      child: const Center(
-                        child: CircularProgressIndicator(),
-                      ),
+                      child: const Center(child: CircularProgressIndicator()),
                     ),
                 ],
               ),
             ),
             const SizedBox(height: 20),
-            // Display cropped images from detections in a horizontal list
+            // Display cropped images in a horizontal list with colored borders.
             if (_croppedImages.isNotEmpty)
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -294,10 +340,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     padding: EdgeInsets.symmetric(horizontal: 16.0),
                     child: Text(
                       "Detected Objects",
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style:
+                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -307,15 +351,21 @@ class _HomeScreenState extends State<HomeScreen> {
                       scrollDirection: Axis.horizontal,
                       itemCount: _croppedImages.length,
                       itemBuilder: (context, index) {
+                        final croppedImage = _croppedImages[index];
+                        // Determine border color: red if the filename is in the fake API response; otherwise, green.
+                        final Color borderColor =
+                            _redImageNames.contains(croppedImage.filename)
+                                ? Colors.red
+                                : Colors.green;
                         return Container(
                           margin: const EdgeInsets.symmetric(horizontal: 8.0),
                           decoration: BoxDecoration(
-                            border: Border.all(color: Colors.grey),
+                            border: Border.all(color: borderColor, width: 3),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(8),
-                            child: Image.memory(_croppedImages[index],
+                            child: Image.memory(croppedImage.data,
                                 fit: BoxFit.cover),
                           ),
                         );
@@ -325,7 +375,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             const SizedBox(height: 20),
-            // Action buttons: Take Photo and Pick Image
+            // Action buttons: Take Photo, Pick Image, and Upload Cropped Images.
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
@@ -349,6 +399,17 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ],
             ),
+            const SizedBox(height: 10),
+            if (_croppedImages.isNotEmpty)
+              ElevatedButton.icon(
+                onPressed: _isProcessing ? null : _uploadImages,
+                icon: const Icon(Icons.cloud_upload),
+                label: const Text("Upload Images"),
+                style: ElevatedButton.styleFrom(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                ),
+              ),
             const SizedBox(height: 20),
           ],
         ),
