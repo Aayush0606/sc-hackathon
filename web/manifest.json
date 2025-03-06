@@ -1,6 +1,6 @@
 {
-    "name": "hackathon_test",
-    "short_name": "hackathon_test",
+    "name": "hackathon",
+    "short_name": "hackathon",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

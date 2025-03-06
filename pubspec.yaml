@@ -1,4 +1,4 @@
-name: camera_yolov5_app
+name: team_rocket
 description: A Flutter app that captures an image, runs YOLOv5 detection, and displays the processed image.
 publish_to: 'none'
 version: 1.0.0+1

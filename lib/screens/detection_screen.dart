@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'package:camera/camera.dart';
-import 'package:camera_yolov5_app/constants/constants.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:team_rocket/constants/constants.dart';
 import '../services/camera_service.dart';
 import '../services/vision_service.dart';
 import '../services/image_processing_service.dart';
