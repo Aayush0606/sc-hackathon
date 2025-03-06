@@ -21,7 +21,6 @@ class ImageProcessingService {
       int width = (box[2] - box[0]).toInt();
       int height = (box[3] - box[1]).toInt();
 
-      // Keep crop boundaries within the image.
       if (x < 0) x = 0;
       if (y < 0) y = 0;
       if (x + width > decodedImage.width) width = decodedImage.width - x;

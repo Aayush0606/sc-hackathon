@@ -22,7 +22,6 @@ class _LandingPageState extends State<LandingPage>
   void initState() {
     super.initState();
 
-    // Animated gradient controller.
     _gradientController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 3),
@@ -35,7 +34,6 @@ class _LandingPageState extends State<LandingPage>
         ColorTween(begin: Colors.purple, end: Colors.lightBlueAccent)
             .animate(_gradientController);
 
-    // Bounce animation for the swipe-up indicator.
     _bounceController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 800),
@@ -52,9 +50,7 @@ class _LandingPageState extends State<LandingPage>
     super.dispose();
   }
 
-  // Handle the swipe up gesture and navigate with a slide transition.
   void _handleSwipe(DragEndDetails details) {
-    // Check for an upward swipe (negative velocity).
     if (details.velocity.pixelsPerSecond.dy < -300) {
       Navigator.push(
         context,
@@ -125,7 +121,6 @@ class _LandingPageState extends State<LandingPage>
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 40),
-                      // Bouncing icon to indicate swipe up.
                       AnimatedBuilder(
                         animation: _bounceAnimation,
                         builder: (context, child) {

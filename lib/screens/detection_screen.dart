@@ -1,15 +1,15 @@
 import 'dart:io';
-import 'dart:convert';
 import 'package:camera/camera.dart';
 import 'package:camera_yolov5_app/constants/constants.dart';
-import '../models/cropped_image.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'package:http_parser/http_parser.dart';
+import 'package:image_picker/image_picker.dart';
 import '../services/camera_service.dart';
 import '../services/vision_service.dart';
-import 'package:image_picker/image_picker.dart';
 import '../services/image_processing_service.dart';
+import '../models/cropped_image.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 
 class DetectionScreen extends StatefulWidget {
   const DetectionScreen({Key? key}) : super(key: key);
@@ -76,11 +76,10 @@ class _DetectionScreenState extends State<DetectionScreen> {
     });
 
     try {
-      final imageFileX = await _cameraService.captureImage();
-      await _processImage(File(imageFileX.path));
+      final imageXFile = await _cameraService.captureImage();
+      await _processImage(File(imageXFile.path));
     } catch (e) {
       debugPrint("Error capturing image: $e");
-    } finally {
       setState(() {
         _isProcessing = false;
       });
@@ -95,9 +94,6 @@ class _DetectionScreenState extends State<DetectionScreen> {
         _isProcessing = true;
       });
       await _processImage(File(photo.path));
-      setState(() {
-        _isProcessing = false;
-      });
     }
   }
 
@@ -107,6 +103,7 @@ class _DetectionScreenState extends State<DetectionScreen> {
       _yoloResults = [];
       _croppedImages = [];
       _redImageNames = [];
+      _isProcessing = true;
     });
 
     final bytes = await imageFile.readAsBytes();
@@ -125,8 +122,13 @@ class _DetectionScreenState extends State<DetectionScreen> {
     if (_yoloResults.isNotEmpty) {
       _croppedImages = await _imageProcessingService.cropDetectedObjects(
           imageFile, _yoloResults);
-      setState(() {});
     }
+
+    await _uploadImages();
+
+    setState(() {
+      _isProcessing = false;
+    });
   }
 
   List<Widget> _displayBoxes(Size previewSize) {
@@ -159,9 +161,6 @@ class _DetectionScreenState extends State<DetectionScreen> {
 
   Future<void> _uploadImages() async {
     if (_croppedImages.isEmpty) return;
-    setState(() {
-      _isProcessing = true;
-    });
 
     final url = Uri.parse(uploadEndpoint);
     final request = http.MultipartRequest("POST", url);
@@ -188,12 +187,9 @@ class _DetectionScreenState extends State<DetectionScreen> {
           redImages.add(result["filename"]);
         }
       }
-
       setState(() {
         _redImageNames = redImages;
-        _isProcessing = false;
       });
-
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             content:
@@ -201,13 +197,10 @@ class _DetectionScreenState extends State<DetectionScreen> {
       );
     } catch (e) {
       debugPrint("Error during upload: $e");
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text("Error during upload. Please try again.")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Error during upload. Please try again.")),
+      );
     }
-
-    setState(() {
-      _isProcessing = false;
-    });
   }
 
   @override
@@ -224,7 +217,7 @@ class _DetectionScreenState extends State<DetectionScreen> {
     final double previewWidth = size.width;
     final double previewHeight =
         size.width * _cameraService.controller!.value.aspectRatio;
-    final previewSize = Size(previewWidth, previewHeight);
+    final Size previewSize = Size(previewWidth, previewHeight);
 
     return Scaffold(
       appBar: AppBar(title: const Text("YOLO Detection")),
@@ -270,7 +263,7 @@ class _DetectionScreenState extends State<DetectionScreen> {
                       itemCount: _croppedImages.length,
                       itemBuilder: (context, index) {
                         final croppedImage = _croppedImages[index];
-                        final borderColor =
+                        final Color borderColor =
                             _redImageNames.contains(croppedImage.filename)
                                 ? Colors.red
                                 : Colors.green;
@@ -307,13 +300,6 @@ class _DetectionScreenState extends State<DetectionScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 10),
-            if (_croppedImages.isNotEmpty)
-              ElevatedButton.icon(
-                onPressed: _isProcessing ? null : _uploadImages,
-                icon: const Icon(Icons.cloud_upload),
-                label: const Text("Upload Images"),
-              ),
             const SizedBox(height: 20),
           ],
         ),

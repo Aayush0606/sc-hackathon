@@ -8,7 +8,7 @@ class VisionService {
     await vision.loadYoloModel(
       labels: 'assets/labels/labels.txt',
       modelPath: 'assets/models/bestv8.tflite',
-      modelVersion: "yolov8", // Change accordingly if using a different YOLO version.
+      modelVersion: "yolov8",
       numThreads: 2,
       useGpu: false,
     );
