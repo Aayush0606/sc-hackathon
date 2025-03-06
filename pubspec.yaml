@@ -1,0 +1,24 @@
+name: camera_yolov5_app
+description: A Flutter app that captures an image, runs YOLOv5 detection, and displays the processed image.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ">=2.17.0 <3.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  image_picker: ^0.8.5+3
+  flutter_pytorch: any
+  image: ^3.0.7
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/models/
+    - assets/labels/
