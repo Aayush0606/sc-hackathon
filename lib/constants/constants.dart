@@ -1,0 +1,1 @@
+String uploadEndpoint = 'http://ec2-15-206-174-13.ap-south-1.compute.amazonaws.com:8000/process-skus/';
