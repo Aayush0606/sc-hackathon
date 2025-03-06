@@ -1,23 +1,31 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui';
+
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:flutter_pytorch/flutter_pytorch.dart';
-import 'package:flutter_pytorch/pigeon.dart';
+import 'package:flutter_vision/flutter_vision.dart';
 import 'package:image/image.dart' as img; // For image processing (cropping)
 
-void main() {
+late List<CameraDescription> cameras;
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  DartPluginRegistrant.ensureInitialized();
+  cameras = await availableCameras();
   runApp(const MyApp());
 }
 
 /// Main Application Widget
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({Key? key}) : super(key: key);
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'YOLOv5 Detection',
+      title: 'YOLO Detection',
       theme: ThemeData(primarySwatch: Colors.blue),
       home: const HomeScreen(),
     );
@@ -27,163 +35,321 @@ class MyApp extends StatelessWidget {
 /// HomeScreen: Captures an image, runs object detection, crops out each detected object,
 /// and displays both the processed image with bounding boxes and the cropped detections.
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({Key? key}) : super(key: key);
+
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  late ModelObjectDetection _objectModel;
-  File? _image;
-  final ImagePicker _picker = ImagePicker();
-  List<ResultObjectDetection?> objDetect = [];
+  late FlutterVision _vision;
+  CameraController? _cameraController;
+  File? _imageFile;
+  List<Map<String, dynamic>> _yoloResults = [];
   List<Uint8List> _croppedImages = [];
+  bool _isLoaded = false;
   bool _isProcessing = false;
+  int _imageHeight = 1;
+  int _imageWidth = 1;
 
   @override
   void initState() {
     super.initState();
-    loadModel();
+    _initializeCamera();
+    _vision = FlutterVision();
+    _loadYoloModel();
   }
 
-  /// Load the YOLOv5 model from assets.
-  Future<void> loadModel() async {
-    String modelPath = "assets/models/yolov5s.torchscript";
+  @override
+  void dispose() {
+    _vision.closeYoloModel();
+    _cameraController?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _initializeCamera() async {
+    _cameraController = CameraController(
+      cameras[0],
+      ResolutionPreset.medium,
+    );
+    await _cameraController!.initialize();
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  Future<void> _loadYoloModel() async {
     try {
-      _objectModel = await FlutterPytorch.loadObjectDetectionModel(
-        modelPath,
-        80, // Number of classes (adjust if necessary)
-        640, // Input width
-        640, // Input height
-        labelPath: "assets/labels/labels.txt",
+      await _vision.loadYoloModel(
+        labels: 'assets/labels/labels.txt',
+        modelPath:
+            'assets/models/bestv8.tflite', // Use your preferred model here
+        modelVersion: "yolov8", // Change to "yolov5" if using YOLOv5 model
+        numThreads: 2,
+        useGpu: false,
       );
+      setState(() {
+        _isLoaded = true;
+      });
     } catch (e) {
-      if (e is PlatformException) {
-        debugPrint("PlatformException: $e");
-      } else {
-        debugPrint("Error loading model: $e");
-      }
+      debugPrint("Error loading model: $e");
     }
   }
 
-  /// Crop each detected object from the image using the detection's rect properties.
-  Future<List<Uint8List>> cropDetectedObjects(
-      File imageFile, List<ResultObjectDetection?> detections) async {
-    // Read the image file as bytes and decode it.
-    final bytes = await imageFile.readAsBytes();
-    final decodedImage = img.decodeImage(bytes);
-    if (decodedImage == null) return [];
-
-    List<Uint8List> croppedImages = [];
-    for (final detection in detections) {
-      if (detection == null) continue;
-
-      // Multiply normalized coordinates by the image dimensions.
-      int x = (detection.rect.left * decodedImage.width).toInt();
-      int y = (detection.rect.top * decodedImage.height).toInt();
-      int width = (detection.rect.width * decodedImage.width).toInt();
-      int height = (detection.rect.height * decodedImage.height).toInt();
-
-      // Ensure the crop region stays within the image boundaries.
-      if (x < 0) x = 0;
-      if (y < 0) y = 0;
-      if (x + width > decodedImage.width) width = decodedImage.width - x;
-      if (y + height > decodedImage.height) height = decodedImage.height - y;
-
-      // Crop the image based on the bounding box.
-      final cropped = img.copyCrop(decodedImage, x, y, width, height);
-      // Convert the cropped image to PNG bytes.
-      final croppedBytes = Uint8List.fromList(img.encodePng(cropped));
-      croppedImages.add(croppedBytes);
+  Future<void> _captureImage() async {
+    if (_cameraController == null || !_cameraController!.value.isInitialized) {
+      return;
     }
-    return croppedImages;
-  }
-
-  /// Capture an image from the camera, run detection, and crop out the detected objects.
-  Future<void> runObjectDetection() async {
-    final XFile? image = await _picker.pickImage(source: ImageSource.camera);
-    if (image == null) return;
 
     setState(() {
       _isProcessing = true;
     });
 
-    File imgFile = File(image.path);
+    try {
+      final XFile imageFile = await _cameraController!.takePicture();
+      await _processImage(File(imageFile.path));
+    } catch (e) {
+      debugPrint("Error capturing image: $e");
+    } finally {
+      setState(() {
+        _isProcessing = false;
+      });
+    }
+  }
 
-    // Run inference on the captured image.
-    List<ResultObjectDetection?> detections =
-        await _objectModel.getImagePrediction(
-      await imgFile.readAsBytes(),
-      minimumScore: 0.1,
-      IOUThershold: 0.3,
-    );
+  Future<void> _pickImage() async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? photo = await picker.pickImage(source: ImageSource.gallery);
 
-    // Crop the detected objects from the image.
-    List<Uint8List> cropped = await cropDetectedObjects(imgFile, detections);
+    if (photo != null) {
+      setState(() {
+        _isProcessing = true;
+      });
+
+      await _processImage(File(photo.path));
+
+      setState(() {
+        _isProcessing = false;
+      });
+    }
+  }
+
+  Future<void> _processImage(File imageFile) async {
+    setState(() {
+      _imageFile = imageFile;
+      _yoloResults = [];
+      _croppedImages = [];
+    });
+
+    // Run YOLO detection on the image
+    await _runDetection(imageFile);
+
+    // Crop the detected objects
+    if (_yoloResults.isNotEmpty) {
+      await _cropDetectedObjects(imageFile);
+    }
+  }
+
+  Future<void> _runDetection(File imageFile) async {
+    Uint8List byte = await imageFile.readAsBytes();
+    final image = await decodeImageFromList(byte);
 
     setState(() {
-      _image = imgFile;
-      objDetect = detections;
-      _croppedImages = cropped;
-      _isProcessing = false;
+      _imageHeight = image.height;
+      _imageWidth = image.width;
     });
+
+    final result = await _vision.yoloOnImage(
+      bytesList: byte,
+      imageHeight: image.height,
+      imageWidth: image.width,
+      iouThreshold: 0.4,
+      confThreshold: 0.4,
+      classThreshold: 0.4,
+    );
+
+    if (result.isNotEmpty) {
+      setState(() {
+        _yoloResults = result;
+      });
+    }
+  }
+
+  Future<void> _cropDetectedObjects(File imageFile) async {
+    final bytes = await imageFile.readAsBytes();
+    final decodedImage = img.decodeImage(bytes);
+    if (decodedImage == null) return;
+
+    List<Uint8List> croppedImages = [];
+
+    for (final detection in _yoloResults) {
+      List<dynamic> box = detection["box"];
+      int x = box[0].toInt();
+      int y = box[1].toInt();
+      int width = (box[2] - box[0]).toInt();
+      int height = (box[3] - box[1]).toInt();
+
+      // Ensure crop stays within image boundaries
+      if (x < 0) x = 0;
+      if (y < 0) y = 0;
+      if (x + width > decodedImage.width) width = decodedImage.width - x;
+      if (y + height > decodedImage.height) height = decodedImage.height - y;
+
+      final cropped = img.copyCrop(decodedImage, x, y, width, height);
+      final croppedBytes = Uint8List.fromList(img.encodePng(cropped));
+      croppedImages.add(croppedBytes);
+    }
+
+    setState(() {
+      _croppedImages = croppedImages;
+    });
+  }
+
+  /// Calculate and return positioned bounding boxes relative to the preview container
+  List<Widget> _displayBoxesAroundRecognizedObjects(Size previewSize) {
+    if (_yoloResults.isEmpty) return [];
+
+    double factorX = previewSize.width / _imageWidth;
+    double factorY = previewSize.height / _imageHeight;
+
+    return _yoloResults.map((result) {
+      List<dynamic> box = result["box"];
+      double left = box[0] * factorX;
+      double top = box[1] * factorY;
+      double width = (box[2] - box[0]) * factorX;
+      double height = (box[3] - box[1]) * factorY;
+
+      return Positioned(
+        left: left,
+        top: top,
+        width: width,
+        height: height,
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: const BorderRadius.all(Radius.circular(10.0)),
+            border: Border.all(color: Colors.pink, width: 2.0),
+          ),
+        ),
+      );
+    }).toList();
   }
 
   @override
   Widget build(BuildContext context) {
+    final Size size = MediaQuery.of(context).size;
+
+    if (!_isLoaded ||
+        _cameraController == null ||
+        !_cameraController!.value.isInitialized) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    // Define the preview container dimensions based on the screen width and camera aspect ratio
+    final double previewWidth = size.width;
+    final double previewHeight =
+        size.width * _cameraController!.value.aspectRatio;
+    final Size previewSize = Size(previewWidth, previewHeight);
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text("YOLOv5 Detection"),
+        title: const Text("YOLO Detection"),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // Display the processed image with bounding boxes.
-            _image != null && objDetect.isNotEmpty
-                ? SizedBox(
-                    height: 300,
-                    width: 300,
-                    child: _objectModel.renderBoxesOnImage(_image!, objDetect),
-                  )
-                : const Text("No image processed yet."),
-            const SizedBox(height: 20),
-            // Display each cropped detected object.
-            _croppedImages.isNotEmpty
-                ? Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        "Detected Objects:",
-                        style: TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.bold),
+            Container(
+              width: previewWidth,
+              height: previewHeight,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  // Display either the captured image or the live camera preview
+                  _imageFile != null
+                      ? Image.file(_imageFile!, fit: BoxFit.fill)
+                      : CameraPreview(_cameraController!),
+                  // Display bounding boxes when an image is loaded
+                  if (_imageFile != null)
+                    ..._displayBoxesAroundRecognizedObjects(previewSize),
+                  // Processing overlay
+                  if (_isProcessing)
+                    Container(
+                      color: Colors.black.withOpacity(0.3),
+                      child: const Center(
+                        child: CircularProgressIndicator(),
                       ),
-                      const SizedBox(height: 10),
-                      ListView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: _croppedImages.length,
-                        itemBuilder: (context, index) {
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 8.0),
-                            child: Image.memory(_croppedImages[index]),
-                          );
-                        },
-                      )
-                    ],
-                  )
-                : const SizedBox(),
-            const SizedBox(height: 20),
-            // Button to capture image and run detection.
-            _isProcessing
-                ? const CircularProgressIndicator()
-                : ElevatedButton(
-                    onPressed: runObjectDetection,
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size(150, 50),
                     ),
-                    child: const Icon(Icons.camera_alt),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            // Display cropped images from detections in a horizontal list
+            if (_croppedImages.isNotEmpty)
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16.0),
+                    child: Text(
+                      "Detected Objects",
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    height: 150,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: _croppedImages.length,
+                      itemBuilder: (context, index) {
+                        return Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 8.0),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.grey),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.memory(_croppedImages[index],
+                                fit: BoxFit.cover),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            const SizedBox(height: 20),
+            // Action buttons: Take Photo and Pick Image
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                ElevatedButton.icon(
+                  onPressed: _isProcessing ? null : _captureImage,
+                  icon: const Icon(Icons.camera_alt),
+                  label: const Text("Take Photo"),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 12),
+                  ),
+                ),
+                ElevatedButton.icon(
+                  onPressed: _isProcessing ? null : _pickImage,
+                  icon: const Icon(Icons.photo_library),
+                  label: const Text("Pick Image"),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 12),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
           ],
         ),
       ),
