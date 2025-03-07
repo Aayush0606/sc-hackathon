@@ -198,9 +198,24 @@ class _DetectionScreenState extends State<DetectionScreen> {
       });
     } catch (e) {
       debugPrint("Error during upload: $e");
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Error during upload. Please try again.")),
+      showDialog(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            title: const Text("Upload Error"),
+            content: Text(e.toString()),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("OK"),
+              ),
+            ],
+          );
+        },
       );
+      // ScaffoldMessenger.of(context).showSnackBar(
+      //   const SnackBar(content: Text("Error during upload. Please try again.")),
+      // );
     }
   }
 
@@ -272,7 +287,7 @@ class _DetectionScreenState extends State<DetectionScreen> {
     );
   }
 
-  void _showAnalysisDialog() {
+  void _showAnalysisBottomSheet() {
     int total = _uploadResults.length;
     int success = _uploadResults.values
         .where((result) => result["product"] == true)
@@ -280,73 +295,233 @@ class _DetectionScreenState extends State<DetectionScreen> {
     int failure = _uploadResults.values
         .where((result) => result["product"] == false)
         .length;
+    double successPercentage = total > 0 ? (success / total * 100) : 0.0;
 
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (context) {
-        return Dialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          child: Container(
-            padding: EdgeInsets.all(20),
-            height: 350,
-            child: Column(
-              children: [
-                Text("Analysis",
-                    style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87)),
-                SizedBox(height: 20),
-                Expanded(
-                  child: PieChart(
-                    PieChartData(
-                      borderData: FlBorderData(show: false),
-                      sectionsSpace: 4,
-                      centerSpaceRadius: 40,
-                      sections: [
-                        PieChartSectionData(
-                          color: Colors.green,
-                          value: success.toDouble(),
-                          title: success > 0 ? "$success" : "",
-                          radius: 80,
-                          titleStyle: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white),
-                        ),
-                        PieChartSectionData(
-                          color: Colors.red,
-                          value: failure.toDouble(),
-                          title: failure > 0 ? "$failure" : "",
-                          radius: 80,
-                          titleStyle: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white),
-                        ),
-                      ],
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.55,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black12,
+                blurRadius: 10,
+                spreadRadius: 0,
+              ),
+            ],
+          ),
+          child: Stack(
+            children: [
+              Align(
+                alignment: Alignment.topCenter,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Container(
+                    width: 40,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(30),
                     ),
                   ),
                 ),
-                SizedBox(height: 10),
-                Text("Total Images: $total",
-                    style: TextStyle(fontSize: 18, color: Colors.black87)),
-                SizedBox(height: 10),
-                ElevatedButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blueAccent,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10))),
-                  child: Text("Close",
-                      style: TextStyle(fontSize: 18, color: Colors.white)),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ShaderMask(
+                        shaderCallback: (bounds) => LinearGradient(
+                          colors: [Colors.blueAccent, Colors.lightBlueAccent],
+                        ).createShader(bounds),
+                        child: Text(
+                          "Upload Analysis",
+                          style: TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                      SizedBox(height: 20),
+                      Container(
+                        padding: EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.05),
+                              blurRadius: 10,
+                              spreadRadius: 0,
+                              offset: Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Container(
+                                  width: 140,
+                                  height: 140,
+                                  child: Stack(
+                                    alignment: Alignment.center,
+                                    children: [
+                                      PieChart(
+                                        PieChartData(
+                                          borderData: FlBorderData(show: false),
+                                          sectionsSpace: 2,
+                                          centerSpaceRadius: 30,
+                                          sections: [
+                                            PieChartSectionData(
+                                              color: Color(0xFF4CAF50),
+                                              value: success.toDouble(),
+                                              radius: 45,
+                                              showTitle: false,
+                                            ),
+                                            PieChartSectionData(
+                                              color: Color(0xFFE53935),
+                                              value: failure.toDouble(),
+                                              radius: 40,
+                                              showTitle: false,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            "${successPercentage.toStringAsFixed(1)}%",
+                                            style: TextStyle(
+                                              fontSize: 20,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.black87,
+                                            ),
+                                          ),
+                                          Text(
+                                            "Success",
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.black54,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      _buildStatItem(
+                                          Icons.image,
+                                          "Total Images",
+                                          "$total",
+                                          Colors.blueAccent),
+                                      SizedBox(height: 12),
+                                      _buildStatItem(
+                                          Icons.check_circle_outline,
+                                          "Success",
+                                          "$success",
+                                          Color(0xFF4CAF50)),
+                                      SizedBox(height: 12),
+                                      _buildStatItem(
+                                          Icons.error_outline,
+                                          "Failed",
+                                          "$failure",
+                                          Color(0xFFE53935)),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(height: 24),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () => Navigator.pop(context),
+                          icon: Icon(Icons.close, color: Colors.white),
+                          label: Text(
+                            "Close",
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blueAccent,
+                            padding: EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            elevation: 0,
+                          ),
+                        ),
+                      ),
+                      SizedBox(height: 20),
+                    ],
+                  ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         );
       },
+    );
+  }
+
+  Widget _buildStatItem(
+      IconData icon, String label, String value, Color color) {
+    return Row(
+      children: [
+        Container(
+          padding: EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, color: color, size: 20),
+        ),
+        SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.black54,
+                ),
+              ),
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -469,7 +644,8 @@ class _DetectionScreenState extends State<DetectionScreen> {
             const SizedBox(height: 20),
             Center(
               child: ElevatedButton.icon(
-                onPressed: _uploadResults.isEmpty ? null : _showAnalysisDialog,
+                onPressed:
+                    _uploadResults.isEmpty ? null : _showAnalysisBottomSheet,
                 icon: const Icon(Icons.analytics),
                 label: const Text("Analysis"),
                 style: ElevatedButton.styleFrom(
