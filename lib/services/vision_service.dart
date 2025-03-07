@@ -14,6 +14,7 @@ class VisionService {
     );
   }
 
+
   Future<List<Map<String, dynamic>>> runDetection({
     required Uint8List bytes,
     required int imageHeight,

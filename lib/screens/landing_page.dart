@@ -98,21 +98,36 @@ class _LandingPageState extends State<LandingPage>
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
+                      AnimatedBuilder(
+                        animation: _bounceAnimation,
+                        builder: (context, child) {
+                          return Transform.translate(
+                            offset: Offset(0, _bounceAnimation.value),
+                            child: child,
+                          );
+                        },
+                        child: Image.asset(
+                          'assets/images/159078.png',
+                          height: 48,
+                          width: 48,
+                          color: Colors.white,
+                        ),
+                      ),
                       Text(
-                        "SKU Detection App",
-                        style: GoogleFonts.pacifico(
+                        "Merch-Eye",
+                        style: GoogleFonts.oswald(
                           textStyle: const TextStyle(
-                            fontSize: 48,
+                            fontSize: 52,
                             color: Colors.white,
-                            fontWeight: FontWeight.bold,
+                            fontWeight: FontWeight.w900,
                           ),
                         ),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 20),
                       Text(
-                        "Capture. Detect. Create.\nInstantly crop and explore objects in your images.",
-                        style: GoogleFonts.roboto(
+                        "Merchandising will not be the same\n Welcome to the world of AI",
+                        style: GoogleFonts.oswald(
                           textStyle: const TextStyle(
                             fontSize: 20,
                             color: Colors.white70,

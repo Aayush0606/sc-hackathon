@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'package:camera/camera.dart';
+import 'package:team_rocket/constants/constants.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:team_rocket/constants/constants.dart';
 import '../services/camera_service.dart';
 import '../services/vision_service.dart';
 import '../services/image_processing_service.dart';
@@ -33,10 +33,7 @@ class _DetectionScreenState extends State<DetectionScreen> {
   bool _isProcessing = false;
   int _imageHeight = 1;
   int _imageWidth = 1;
-
-  // Stores filenames that should have red borders.
   List<String> _redImageNames = [];
-  // Stores complete API response for each image (keyed by filename).
   Map<String, dynamic> _uploadResults = {};
 
   @override
@@ -61,7 +58,6 @@ class _DetectionScreenState extends State<DetectionScreen> {
   }
 
   Future<void> _captureImage() async {
-    // If an image is already shown, clear previous state.
     if (_imageFile != null) {
       setState(() {
         _imageFile = null;
@@ -168,8 +164,6 @@ class _DetectionScreenState extends State<DetectionScreen> {
     }).toList();
   }
 
-  /// Uploads the cropped images to the API.
-  /// It stores the complete API response for each file in _uploadResults.
   Future<void> _uploadImages() async {
     if (_croppedImages.isEmpty) return;
 
@@ -193,7 +187,6 @@ class _DetectionScreenState extends State<DetectionScreen> {
       final responseData = json.decode(responseString);
 
       List<String> redImages = [];
-      // Populate _uploadResults mapping.
       for (var result in responseData["results"]) {
         _uploadResults[result["filename"]] = result;
         if (result["product"] == false) {
@@ -211,7 +204,6 @@ class _DetectionScreenState extends State<DetectionScreen> {
     }
   }
 
-  // Shows a cool popup with SKU codes for a success image.
   void _showSkuDialog(String filename) {
     final result = _uploadResults[filename];
     if (result == null || result["product"] != true) return;
@@ -227,52 +219,50 @@ class _DetectionScreenState extends State<DetectionScreen> {
       builder: (context) {
         return Dialog(
           shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.0)),
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           child: Container(
-            padding: const EdgeInsets.all(16.0),
+            padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Colors.blueAccent, Colors.lightBlueAccent],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(16.0),
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
+                Text(
                   "Matched SKU Codes",
                   style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white),
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
                 ),
-                const SizedBox(height: 16),
+                const Divider(color: Colors.grey, thickness: 1.5),
+                const SizedBox(height: 10),
                 skuCodes.isNotEmpty
                     ? Column(
                         children: skuCodes
-                            .map((code) => Padding(
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 4.0),
-                                  child: Chip(
-                                    label: Text(
-                                      code,
-                                      style:
-                                          const TextStyle(color: Colors.white),
-                                    ),
-                                    backgroundColor: Colors.deepPurple,
+                            .map((code) => ListTile(
+                                  leading: Icon(Icons.label,
+                                      color: Colors.blueAccent),
+                                  title: Text(
+                                    code,
+                                    style: TextStyle(
+                                        fontSize: 16, color: Colors.black87),
                                   ),
                                 ))
                             .toList(),
                       )
-                    : const Text("No SKU codes available.",
-                        style: TextStyle(color: Colors.white)),
-                const SizedBox(height: 16),
-                TextButton(
+                    : Text("No SKU codes available.",
+                        style: TextStyle(fontSize: 16, color: Colors.black54)),
+                const SizedBox(height: 10),
+                ElevatedButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text("Close",
-                      style: TextStyle(color: Colors.white)),
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blueAccent,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10))),
+                  child: Text("Close", style: TextStyle(fontSize: 16)),
                 )
               ],
             ),
@@ -282,7 +272,6 @@ class _DetectionScreenState extends State<DetectionScreen> {
     );
   }
 
-  // Shows analysis of the images in a pie chart.
   void _showAnalysisDialog() {
     int total = _uploadResults.length;
     int success = _uploadResults.values
@@ -297,55 +286,62 @@ class _DetectionScreenState extends State<DetectionScreen> {
       builder: (context) {
         return Dialog(
           shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.0)),
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           child: Container(
-            height: 320,
-            padding: const EdgeInsets.all(16.0),
+            padding: EdgeInsets.all(20),
+            height: 350,
             child: Column(
               children: [
-                const Text("Analysis",
-                    style:
-                        TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 16),
+                Text("Analysis",
+                    style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87)),
+                SizedBox(height: 20),
                 Expanded(
                   child: PieChart(
                     PieChartData(
+                      borderData: FlBorderData(show: false),
+                      sectionsSpace: 4,
+                      centerSpaceRadius: 40,
                       sections: [
                         PieChartSectionData(
                           color: Colors.green,
                           value: success.toDouble(),
-                          title: "Success\n$success",
-                          radius: 60,
-                          titleStyle: const TextStyle(
-                              fontSize: 16,
+                          title: success > 0 ? "$success" : "",
+                          radius: 80,
+                          titleStyle: TextStyle(
+                              fontSize: 18,
                               fontWeight: FontWeight.bold,
                               color: Colors.white),
                         ),
                         PieChartSectionData(
                           color: Colors.red,
                           value: failure.toDouble(),
-                          title: "Failure\n$failure",
-                          radius: 60,
-                          titleStyle: const TextStyle(
-                              fontSize: 16,
+                          title: failure > 0 ? "$failure" : "",
+                          radius: 80,
+                          titleStyle: TextStyle(
+                              fontSize: 18,
                               fontWeight: FontWeight.bold,
                               color: Colors.white),
                         ),
                       ],
-                      sectionsSpace: 2,
-                      centerSpaceRadius: 40,
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
+                SizedBox(height: 10),
                 Text("Total Images: $total",
-                    style: const TextStyle(fontSize: 16)),
-                const SizedBox(height: 8),
-                TextButton(
+                    style: TextStyle(fontSize: 18, color: Colors.black87)),
+                SizedBox(height: 10),
+                ElevatedButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text("Close",
-                      style: TextStyle(fontSize: 16, color: Colors.blue)),
-                )
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blueAccent,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10))),
+                  child: Text("Close",
+                      style: TextStyle(fontSize: 18, color: Colors.white)),
+                ),
               ],
             ),
           ),
@@ -354,7 +350,6 @@ class _DetectionScreenState extends State<DetectionScreen> {
     );
   }
 
-  // Custom cool loading widget using SpinKit.
   Widget _buildCoolLoader() {
     return Center(
       child: SpinKitFadingCircle(
@@ -430,7 +425,6 @@ class _DetectionScreenState extends State<DetectionScreen> {
                             _redImageNames.contains(croppedImage.filename);
                         final Color borderColor =
                             isFailure ? Colors.red : Colors.green;
-                        // Wrap the image in a GestureDetector if it is successful.
                         Widget imageWidget = Container(
                           margin: const EdgeInsets.symmetric(horizontal: 8.0),
                           decoration: BoxDecoration(
@@ -473,11 +467,19 @@ class _DetectionScreenState extends State<DetectionScreen> {
               ],
             ),
             const SizedBox(height: 20),
-            // Analysis button at bottom center.
-            ElevatedButton.icon(
-              onPressed: _uploadResults.isEmpty ? null : _showAnalysisDialog,
-              icon: const Icon(Icons.analytics),
-              label: const Text("Analysis"),
+            Center(
+              child: ElevatedButton.icon(
+                onPressed: _uploadResults.isEmpty ? null : _showAnalysisDialog,
+                icon: const Icon(Icons.analytics),
+                label: const Text("Analysis"),
+                style: ElevatedButton.styleFrom(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
             ),
             const SizedBox(height: 20),
           ],
