@@ -157,7 +157,7 @@ class _DetectionScreenState extends State<DetectionScreen> {
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(10.0),
-            border: Border.all(color: Colors.pink, width: 2.0),
+            border: Border.all(color: Colors.blue, width: 2.0),
           ),
         ),
       );
@@ -434,13 +434,13 @@ class _DetectionScreenState extends State<DetectionScreen> {
                                       SizedBox(height: 12),
                                       _buildStatItem(
                                           Icons.check_circle_outline,
-                                          "Success",
+                                          "Matched",
                                           "$success",
                                           Color(0xFF4CAF50)),
                                       SizedBox(height: 12),
                                       _buildStatItem(
                                           Icons.error_outline,
-                                          "Failed",
+                                          "Mismatched",
                                           "$failure",
                                           Color(0xFFE53935)),
                                     ],
